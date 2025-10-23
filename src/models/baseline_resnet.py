@@ -46,7 +46,7 @@ class OrganDataset(Dataset):
 
 
 def _load_class_weights(num_classes: int) -> Optional[torch.Tensor]:
-    weights_path = OUTPUT_CONFIG.root / "class_weights.npy"
+    weights_path = OUTPUT_CONFIG.models_root / "class_weights.npy"
     if not weights_path.exists():
         return None
     weights = np.load(weights_path)
@@ -219,20 +219,20 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
             f"train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_accuracy:.4f}"
         )
 
-    OUTPUT_CONFIG.root.mkdir(parents=True, exist_ok=True)
-    model_path = OUTPUT_CONFIG.root / "resnet18_baseline_weights.pth"
+    OUTPUT_CONFIG.models_root.mkdir(parents=True, exist_ok=True)
+    model_path = OUTPUT_CONFIG.models_root / "resnet18_baseline_weights.pth"
     torch.save(model.state_dict(), model_path)
 
     preds, targets = _collect_predictions(model, val_loader, device)
     cm = confusion_matrix(targets, preds, labels=class_labels)
-    np.save(OUTPUT_CONFIG.tables / "confusion_matrix.npy", cm)
+    np.save(OUTPUT_CONFIG.models_root / "confusion_matrix.npy", cm)
 
     per_class_acc = {}
     for label in class_labels:
         mask = targets == label
         per_class_acc[label] = float((preds[mask] == label).mean()) if mask.any() else None
     per_class_df = pd.DataFrame({"label": list(per_class_acc.keys()), "accuracy": list(per_class_acc.values())})
-    per_class_df.to_json(OUTPUT_CONFIG.reports / "per_class_accuracy.json", orient="records", indent=2)
+    per_class_df.to_json(OUTPUT_CONFIG.models_root / "per_class_accuracy.json", orient="records", indent=2)
 
     difficult_pairs = []
     for i, actual in enumerate(class_labels):
@@ -245,7 +245,7 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
                 "count": int(cm[i, j]),
             })
     difficult_pairs_df = pd.DataFrame(difficult_pairs).sort_values("count", ascending=False)
-    difficult_pairs_df.to_csv(OUTPUT_CONFIG.tables / "difficult_pairs.csv", index=False)
+    difficult_pairs_df.to_csv(OUTPUT_CONFIG.models_root / "difficult_pairs.csv", index=False)
 
     plt.figure(figsize=(8, 5))
     epochs = np.arange(1, config.epochs + 1)
@@ -257,7 +257,7 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
     plt.title("ResNet18 Baseline Training")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(OUTPUT_CONFIG.figures / "training_curves_baseline.png")
+    plt.savefig(OUTPUT_CONFIG.models_root / "training_curves_baseline.png")
     plt.close()
 
     summary = {
@@ -270,7 +270,7 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
         "val_samples": len(val_dataset),
         "final_val_accuracy": history["val_accuracy"][-1],
     }
-    (OUTPUT_CONFIG.reports / "resnet18_baseline_summary.json").write_text(
+    (OUTPUT_CONFIG.models_root / "resnet18_baseline_summary.json").write_text(
         json.dumps(summary, indent=2)
     )
 

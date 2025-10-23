@@ -14,6 +14,8 @@ from .config import OUTPUT_CONFIG
 
 def ensure_output_directories() -> None:
     OUTPUT_CONFIG.root.mkdir(parents=True, exist_ok=True)
+    OUTPUT_CONFIG.analysis_root.mkdir(parents=True, exist_ok=True)
+    OUTPUT_CONFIG.models_root.mkdir(parents=True, exist_ok=True)
     OUTPUT_CONFIG.figures.mkdir(parents=True, exist_ok=True)
     OUTPUT_CONFIG.tables.mkdir(parents=True, exist_ok=True)
     OUTPUT_CONFIG.reports.mkdir(parents=True, exist_ok=True)

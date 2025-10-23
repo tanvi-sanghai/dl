@@ -7,6 +7,9 @@ __init__.py
 class_imbalance.py
     Samples training and validation images, trains an SGD-based logistic model, and reports per-class accuracy along with confusion matrix plots for imbalance diagnostics.
 
+class_statistics.py
+    Aggregates previously generated per-class metrics and pixel summaries into a single JSON bundle for downstream reporting.
+
 config.py
     Central location for dataset and output directory paths via `DatasetConfig` and `OutputConfig` dataclasses.
 
@@ -38,7 +41,7 @@ robustness_deepdive.py
     Extends robustness work with frequency-domain analysis, adversarial attacks (FGSM/PGD), and occlusion sensitivity maps.
 
 run_pipeline.py
-    Orchestrates the full analysis pipeline, setting up logging and executing all module entry points in sequence.
+    Entry point that sequences the weekly analysis modules, configures logging, and orchestrates end-to-end execution.
 
 test_characterization.py
     Compares train/val/test distributions via pixel, edge, texture, and anomaly metrics, including PCA-based feature comparisons.
@@ -46,3 +49,8 @@ test_characterization.py
 utils.py
     Shared helpers for loading CSV labels, reading images, ensuring output directories, saving results, and chunking iterables.
 
+
+Related models package
+----------------------
+src/models/baseline_resnet.py
+    Trains the ResNet18 reference classifier used by several analysis modules; exports weights, confusion matrix, training curves, and summary reports to `analysis_outputs/`.

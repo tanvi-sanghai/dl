@@ -16,9 +16,11 @@ class DatasetConfig:
 @dataclass
 class OutputConfig:
     root: Path = Path(__file__).resolve().parents[2] / "analysis_outputs"
-    figures: Path = root / "figures"
-    tables: Path = root / "tables"
-    reports: Path = root / "reports"
+    analysis_root: Path = root / "analysis"
+    models_root: Path = root / "models"
+    figures: Path = analysis_root / "figures"
+    tables: Path = analysis_root / "tables"
+    reports: Path = analysis_root / "reports"
 
 
 DATASET_CONFIG = DatasetConfig()
