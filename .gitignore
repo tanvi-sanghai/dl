@@ -58,6 +58,11 @@ IS 2025 OrganAMNIST/train/
 IS 2025 OrganAMNIST/val/
 IS 2025 OrganAMNIST/test/
 
+# Environment files
+.env
+.env.local
+.env.*.local
+
 # Archives
 *.zip
 *.tar

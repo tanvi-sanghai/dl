@@ -36,3 +36,6 @@ lazy-loader==0.4
 networkx==3.2.1
 scikit-image==0.24.0
 tifffile==2024.8.30
+torch==2.4.1
+torchvision==0.19.1
+python-dotenv==1.0.1

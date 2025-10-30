@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,7 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader, Dataset
-from torchvision import models, transforms
+from torchvision import transforms
 from tqdm.auto import tqdm
 
 from ..analysis.config import DATASET_CONFIG, OUTPUT_CONFIG
@@ -55,23 +56,92 @@ def _load_class_weights(num_classes: int) -> Optional[torch.Tensor]:
     return torch.tensor(weights, dtype=torch.float32)
 
 
-def _expand_if_needed(t: torch.Tensor) -> torch.Tensor:
-    if t.shape[0] == 1:
-        return t.expand(3, -1, -1)
+def _to_channels_first(t: torch.Tensor) -> torch.Tensor:
+    if t.ndim == 3 and t.shape[-1] in (1, 3):
+        return t.permute(2, 0, 1)
+    if t.ndim == 2:
+        return t.unsqueeze(0)
     return t
+
+
+class EnsureNumChannels:
+    def __init__(self, out_channels: int) -> None:
+        self.out_channels = out_channels
+
+    def __call__(self, t: torch.Tensor) -> torch.Tensor:
+        # t is expected to be CHW after ToTensor
+        if t.dim() != 3:
+            return t
+        in_channels = t.shape[0]
+        if in_channels == self.out_channels:
+            return t
+        if self.out_channels == 1:
+            # average RGB to grayscale
+            return t.mean(dim=0, keepdim=True)
+        if self.out_channels == 3 and in_channels == 1:
+            # replicate grayscale to RGB
+            return t.expand(3, -1, -1)
+        # Fallback: slice or pad if unexpected
+        if in_channels > self.out_channels:
+            return t[: self.out_channels]
+        # pad with zeros
+        pad_channels = self.out_channels - in_channels
+        padding = t.new_zeros(pad_channels, t.shape[1], t.shape[2])
+        return torch.cat([t, padding], dim=0)
 
 
 @dataclass
 class TrainingConfig:
+    model_name: str = "model"
+    input_channels: int = 1
+    input_size: int = 224
     epochs: int = 30
     batch_size: int = 64
     lr: float = 0.01
     momentum: float = 0.9
     weight_decay: float = 5e-4
+    step_size: int = 10
+    gamma: float = 0.1
     max_train_samples: Optional[int] = None
     max_val_samples: Optional[int] = None
     num_workers: int = 4
     seed: int = 42
+    mean: Optional[List[float]] = None
+    std: Optional[List[float]] = None
+
+    @staticmethod
+    def from_env(defaults: "TrainingConfig") -> "TrainingConfig":
+        def _get_int(name: str, fallback: int) -> int:
+            v = os.getenv(name)
+            return int(v) if v is not None and v != "" else fallback
+
+        def _get_float(name: str, fallback: float) -> float:
+            v = os.getenv(name)
+            return float(v) if v is not None and v != "" else fallback
+
+        def _get_str(name: str, fallback: str) -> str:
+            v = os.getenv(name)
+            return v if v is not None and v != "" else fallback
+
+        cfg = TrainingConfig(
+            model_name=_get_str("MODEL_NAME", defaults.model_name),
+            input_channels=_get_int("INPUT_CHANNELS", defaults.input_channels),
+            input_size=_get_int("INPUT_SIZE", defaults.input_size),
+            epochs=_get_int("EPOCHS", defaults.epochs),
+            batch_size=_get_int("BATCH_SIZE", defaults.batch_size),
+            lr=_get_float("LEARNING_RATE", defaults.lr),
+            momentum=_get_float("MOMENTUM", defaults.momentum),
+            weight_decay=_get_float("WEIGHT_DECAY", defaults.weight_decay),
+            step_size=_get_int("STEP_SIZE", defaults.step_size),
+            gamma=_get_float("GAMMA", defaults.gamma),
+            max_train_samples=None,
+            max_val_samples=None,
+            num_workers=_get_int("NUM_WORKERS", defaults.num_workers),
+            seed=_get_int("SEED", defaults.seed),
+            mean=defaults.mean,
+            std=defaults.std,
+        )
+        return cfg
 
 
 def _set_seed(seed: int) -> None:
@@ -79,7 +149,7 @@ def _set_seed(seed: int) -> None:
     np.random.seed(seed)
 
 
-def _prepare_datasets(config: TrainingConfig) -> Tuple[OrganDataset, OrganDataset, List[int]]:
+def prepare_datasets(config: TrainingConfig) -> Tuple[OrganDataset, OrganDataset, List[int]]:
     train_df = load_labels(DATASET_CONFIG.train_labels)
     val_df = load_labels(DATASET_CONFIG.val_labels)
 
@@ -90,13 +160,22 @@ def _prepare_datasets(config: TrainingConfig) -> Tuple[OrganDataset, OrganDatase
 
     class_labels = sorted(train_df["label"].unique())
 
-    mean = [0.4669, 0.4669, 0.4669]
-    std = [0.2796, 0.2796, 0.2796]
+    if config.mean is None or config.std is None:
+        if config.input_channels == 1:
+            mean = [0.4669]
+            std = [0.2796]
+        else:
+            mean = [0.4669, 0.4669, 0.4669]
+            std = [0.2796, 0.2796, 0.2796]
+    else:
+        mean = config.mean
+        std = config.std
+
     transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.Resize((128, 128)),
+        transforms.Resize((config.input_size, config.input_size)),
         transforms.ToTensor(),
-        transforms.Lambda(_expand_if_needed),
+        EnsureNumChannels(config.input_channels),
         transforms.Normalize(mean=mean, std=std),
     ])
 
@@ -106,7 +185,7 @@ def _prepare_datasets(config: TrainingConfig) -> Tuple[OrganDataset, OrganDatase
     return train_dataset, val_dataset, class_labels
 
 
-def _train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, device) -> float:
+def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, device) -> float:
     model.train()
     running_loss = 0.0
     sample_count = 0
@@ -126,7 +205,7 @@ def _train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer,
 
 
 @torch.no_grad()
-def _evaluate(model: nn.Module, loader: DataLoader, device) -> Tuple[float, float]:
+def evaluate(model: nn.Module, loader: DataLoader, device) -> Tuple[float, float]:
     model.eval()
     running_loss = 0.0
     correct = 0
@@ -145,7 +224,7 @@ def _evaluate(model: nn.Module, loader: DataLoader, device) -> Tuple[float, floa
 
 
 @torch.no_grad()
-def _collect_predictions(model: nn.Module, loader: DataLoader, device) -> Tuple[np.ndarray, np.ndarray]:
+def collect_predictions(model: nn.Module, loader: DataLoader, device) -> Tuple[np.ndarray, np.ndarray]:
     preds_list = []
     labels_list = []
     for inputs, targets in tqdm(loader, desc="Collect", unit="batch", leave=True, dynamic_ncols=True):
@@ -157,11 +236,12 @@ def _collect_predictions(model: nn.Module, loader: DataLoader, device) -> Tuple[
     return np.concatenate(preds_list), np.concatenate(labels_list)
 
 
-def run_resnet18_baseline(config: TrainingConfig) -> None:
+def run_training(build_model_fn: Callable[[int], nn.Module], defaults: TrainingConfig) -> None:
     ensure_output_directories()
+    config = TrainingConfig.from_env(defaults)
     _set_seed(config.seed)
 
-    train_dataset, val_dataset, class_labels = _prepare_datasets(config)
+    train_dataset, val_dataset, class_labels = prepare_datasets(config)
     num_classes = len(class_labels)
 
     train_loader = DataLoader(
@@ -183,8 +263,8 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
         "mps" if torch.backends.mps.is_available()
         else ("cuda" if torch.cuda.is_available() else "cpu")
     )
-    model = models.resnet18(weights="DEFAULT")
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
+
+    model = build_model_fn(num_classes)
     model = model.to(device)
 
     class_weights = _load_class_weights(num_classes)
@@ -197,7 +277,7 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
         momentum=config.momentum,
         weight_decay=config.weight_decay,
     )
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=config.step_size, gamma=config.gamma)
 
     history = {
         "train_loss": [],
@@ -206,8 +286,8 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
     }
 
     for epoch in range(config.epochs):
-        train_loss = _train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss, val_accuracy = _evaluate(model, val_loader, device)
+        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_accuracy = evaluate(model, val_loader, device)
         scheduler.step()
 
         history["train_loss"].append(train_loss)
@@ -215,17 +295,22 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
         history["val_accuracy"].append(val_accuracy)
 
         print(
-            f"Epoch {epoch + 1}/{config.epochs}: "
+            f"[{config.model_name}] Epoch {epoch + 1}/{config.epochs}: "
             f"train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_accuracy:.4f}"
         )
 
     OUTPUT_CONFIG.models_root.mkdir(parents=True, exist_ok=True)
-    model_path = OUTPUT_CONFIG.models_root / "resnet18_baseline_weights.pth"
-    torch.save(model.state_dict(), model_path)
+    weights_path = OUTPUT_CONFIG.models_root / f"{config.model_name}_weights.pth"
+    torch.save(model.state_dict(), weights_path)
 
-    preds, targets = _collect_predictions(model, val_loader, device)
+    preds, targets = collect_predictions(model, val_loader, device)
     cm = confusion_matrix(targets, preds, labels=class_labels)
     np.save(OUTPUT_CONFIG.models_root / "confusion_matrix.npy", cm)
+    # Also save per-model versions to avoid overwrites when running multiple trainings
+    try:
+        np.save(OUTPUT_CONFIG.models_root / f"confusion_matrix_{config.model_name}.npy", cm)
+    except Exception:
+        pass
 
     per_class_acc = {}
     for label in class_labels:
@@ -233,34 +318,30 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
         per_class_acc[label] = float((preds[mask] == label).mean()) if mask.any() else None
     per_class_df = pd.DataFrame({"label": list(per_class_acc.keys()), "accuracy": list(per_class_acc.values())})
     per_class_df.to_json(OUTPUT_CONFIG.models_root / "per_class_accuracy.json", orient="records", indent=2)
-
-    difficult_pairs = []
-    for i, actual in enumerate(class_labels):
-        for j, predicted in enumerate(class_labels):
-            if actual == predicted:
-                continue
-            difficult_pairs.append({
-                "actual": int(actual),
-                "predicted": int(predicted),
-                "count": int(cm[i, j]),
-            })
-    difficult_pairs_df = pd.DataFrame(difficult_pairs).sort_values("count", ascending=False)
-    difficult_pairs_df.to_csv(OUTPUT_CONFIG.models_root / "difficult_pairs.csv", index=False)
+    try:
+        per_class_df.to_json(
+            OUTPUT_CONFIG.models_root / f"per_class_accuracy_{config.model_name}.json",
+            orient="records",
+            indent=2,
+        )
+    except Exception:
+        pass
 
     plt.figure(figsize=(8, 5))
-    epochs = np.arange(1, config.epochs + 1)
-    plt.plot(epochs, history["train_loss"], label="Train Loss")
-    plt.plot(epochs, history["val_loss"], label="Val Loss")
-    plt.plot(epochs, history["val_accuracy"], label="Val Accuracy")
+    epochs_arr = np.arange(1, config.epochs + 1)
+    plt.plot(epochs_arr, history["train_loss"], label="Train Loss")
+    plt.plot(epochs_arr, history["val_loss"], label="Val Loss")
+    plt.plot(epochs_arr, history["val_accuracy"], label="Val Accuracy")
     plt.xlabel("Epoch")
     plt.ylabel("Value")
-    plt.title("ResNet18 Baseline Training")
+    plt.title(f"{config.model_name} Training")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(OUTPUT_CONFIG.models_root / "training_curves_baseline.png")
+    plt.savefig(OUTPUT_CONFIG.models_root / f"training_curves_{config.model_name}.png")
     plt.close()
 
     summary = {
+        "model_name": config.model_name,
         "epochs": config.epochs,
         "batch_size": config.batch_size,
         "learning_rate": config.lr,
@@ -268,39 +349,26 @@ def run_resnet18_baseline(config: TrainingConfig) -> None:
         "weight_decay": config.weight_decay,
         "train_samples": len(train_dataset),
         "val_samples": len(val_dataset),
-        "final_val_accuracy": history["val_accuracy"][-1],
+        "final_val_accuracy": history["val_accuracy"][-1] if history["val_accuracy"] else None,
+        "input_size": config.input_size,
+        "input_channels": config.input_channels,
     }
-    (OUTPUT_CONFIG.models_root / "resnet18_baseline_summary.json").write_text(
+    (OUTPUT_CONFIG.models_root / f"{config.model_name}_summary.json").write_text(
         json.dumps(summary, indent=2)
     )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Train ResNet18 baseline model")
-    parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=0.01)
-    parser.add_argument("--momentum", type=float, default=0.9)
-    parser.add_argument("--weight-decay", type=float, default=5e-4)
-    parser.add_argument("--max-train-samples", type=int, default=None)
-    parser.add_argument("--max-val-samples", type=int, default=None)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=42)
-    args = parser.parse_args()
-
-    config = TrainingConfig(
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        lr=args.lr,
-        momentum=args.momentum,
-        weight_decay=args.weight_decay,
-        max_train_samples=args.max_train_samples,
-        max_val_samples=args.max_val_samples,
-        num_workers=args.num_workers,
-        seed=args.seed,
-    )
-    run_resnet18_baseline(config)
+def add_common_cli(parser: argparse.ArgumentParser, defaults: TrainingConfig) -> argparse.ArgumentParser:
+    parser.add_argument("--epochs", type=int, default=defaults.epochs)
+    parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
+    parser.add_argument("--lr", type=float, default=defaults.lr)
+    parser.add_argument("--momentum", type=float, default=defaults.momentum)
+    parser.add_argument("--weight-decay", type=float, default=defaults.weight_decay)
+    parser.add_argument("--step-size", type=int, default=defaults.step_size)
+    parser.add_argument("--gamma", type=float, default=defaults.gamma)
+    parser.add_argument("--num-workers", type=int, default=defaults.num_workers)
+    parser.add_argument("--seed", type=int, default=defaults.seed)
+    parser.add_argument("--input-size", type=int, default=defaults.input_size)
+    return parser
 
 
-if __name__ == "__main__":
-    main()
