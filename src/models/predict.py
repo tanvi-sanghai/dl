@@ -19,6 +19,7 @@ from .resnet50 import build_resnet50
 from .resnet101 import build_resnet101
 from .efficientnet_b3 import build_efficientnet_b3
 from .densenet121 import build_densenet121
+from .convnext_tiny import build_convnext_tiny
 
 
 class PredictDataset(Dataset):
@@ -56,6 +57,10 @@ def _build_transform(input_size: int, input_channels: int) -> transforms.Compose
 
 def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingConfig]]:
     return {
+        "convnext_tiny": (
+            build_convnext_tiny,
+            TrainingConfig(model_name="convnext_tiny", input_channels=1, input_size=224),
+        ),
         "resnet50": (
             build_resnet50,
             TrainingConfig(model_name="resnet50", input_channels=1, input_size=224),

@@ -11,10 +11,28 @@ from .resnet50 import build_resnet50
 from .resnet101 import build_resnet101
 from .efficientnet_b3 import build_efficientnet_b3
 from .densenet121 import build_densenet121
+from .convnext_tiny import build_convnext_tiny
 
 
 def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingConfig]]:
     return {
+        "convnext_tiny": (
+            build_convnext_tiny,
+            TrainingConfig(
+                model_name="convnext_tiny",
+                input_channels=1,
+                input_size=224,
+                epochs=30,
+                batch_size=64,
+                lr=0.01,
+                momentum=0.9,
+                weight_decay=5e-4,
+                step_size=10,
+                gamma=0.1,
+                num_workers=4,
+                seed=42,
+            ),
+        ),
         "resnet50": (
             build_resnet50,
             TrainingConfig(
