@@ -57,10 +57,6 @@ def _build_transform(input_size: int, input_channels: int) -> transforms.Compose
 
 def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingConfig]]:
     return {
-        "convnext_tiny": (
-            build_convnext_tiny,
-            TrainingConfig(model_name="convnext_tiny", input_channels=1, input_size=224),
-        ),
         "resnet50": (
             build_resnet50,
             TrainingConfig(model_name="resnet50", input_channels=1, input_size=224),
@@ -76,6 +72,10 @@ def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingCo
         "densenet121": (
             build_densenet121,
             TrainingConfig(model_name="densenet121", input_channels=1, input_size=224),
+        ),
+        "convnext_tiny": (
+            build_convnext_tiny,
+            TrainingConfig(model_name="convnext_tiny", input_channels=1, input_size=224),
         ),
     }
 

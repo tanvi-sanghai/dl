@@ -48,10 +48,32 @@ class OrganDataset(Dataset):
 
 def _load_class_weights(num_classes: int) -> Optional[torch.Tensor]:
     weights_path = OUTPUT_CONFIG.models_root / "class_weights.npy"
+    # Allow explicit opt-out via CLI/env
+    if os.getenv("NO_CLASS_WEIGHTS", "").strip().lower() in ("1", "true", "yes", "y"):  # type: ignore
+        return None
     if not weights_path.exists():
         return None
-    weights = np.load(weights_path)
+    weights = None
+    try:
+        weights = np.load(weights_path, allow_pickle=False)
+    except Exception:
+        # Fall back for files saved with pickling
+        try:
+            weights = np.load(weights_path, allow_pickle=True)
+        except Exception:
+            print(f"[train] Warning: failed to load class weights from {weights_path}; proceeding without.")
+            return None
+
+    # Coerce to numeric 1D array
+    try:
+        weights = np.asarray(weights, dtype=np.float32).reshape(-1)
+    except Exception:
+        print(f"[train] Warning: class weights at {weights_path} are not numeric; proceeding without.")
+        return None
     if weights.shape[0] != num_classes:
+        print(
+            f"[train] Warning: class weights length {weights.shape[0]} != num_classes {num_classes}; proceeding without."
+        )
         return None
     return torch.tensor(weights, dtype=torch.float32)
 
@@ -71,23 +93,24 @@ class EnsureNumChannels:
     def __call__(self, t: torch.Tensor) -> torch.Tensor:
         # t is expected to be CHW after ToTensor
         if t.dim() != 3:
-            return t
+            return t.contiguous() if t.is_sparse is False else t
         in_channels = t.shape[0]
         if in_channels == self.out_channels:
-            return t
+            return t.contiguous()
         if self.out_channels == 1:
             # average RGB to grayscale
-            return t.mean(dim=0, keepdim=True)
+            return t.mean(dim=0, keepdim=True).contiguous()
         if self.out_channels == 3 and in_channels == 1:
             # replicate grayscale to RGB
-            return t.expand(3, -1, -1)
+            # use repeat to ensure contiguous memory instead of expand (which returns a view)
+            return t.repeat(3, 1, 1).contiguous()
         # Fallback: slice or pad if unexpected
         if in_channels > self.out_channels:
-            return t[: self.out_channels]
+            return t[: self.out_channels].contiguous()
         # pad with zeros
         pad_channels = self.out_channels - in_channels
         padding = t.new_zeros(pad_channels, t.shape[1], t.shape[2])
-        return torch.cat([t, padding], dim=0)
+        return torch.cat([t, padding], dim=0).contiguous()
 
 
 @dataclass
@@ -108,6 +131,7 @@ class TrainingConfig:
     seed: int = 42
     mean: Optional[List[float]] = None
     std: Optional[List[float]] = None
+    force_mps: bool = False
 
     @staticmethod
     def from_env(defaults: "TrainingConfig") -> "TrainingConfig":
@@ -122,6 +146,12 @@ class TrainingConfig:
         def _get_str(name: str, fallback: str) -> str:
             v = os.getenv(name)
             return v if v is not None and v != "" else fallback
+
+        def _get_bool(name: str, fallback: bool) -> bool:
+            v = os.getenv(name)
+            if v is None or v == "":
+                return fallback
+            return v.strip().lower() in ("1", "true", "yes", "y")
 
         cfg = TrainingConfig(
             model_name=_get_str("MODEL_NAME", defaults.model_name),
@@ -140,6 +170,7 @@ class TrainingConfig:
             seed=_get_int("SEED", defaults.seed),
             mean=defaults.mean,
             std=defaults.std,
+            force_mps=_get_bool("FORCE_MPS", defaults.force_mps),
         )
         return cfg
 
@@ -259,10 +290,23 @@ def run_training(build_model_fn: Callable[[int], nn.Module], defaults: TrainingC
         pin_memory=True,
     )
 
-    device = torch.device(
-        "mps" if torch.backends.mps.is_available()
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
+    # Device selection with ConvNeXt MPS workaround
+    use_mps = torch.backends.mps.is_available()
+    use_cuda = torch.cuda.is_available()
+    
+    # ConvNeXt has known issues with MPS backend (view/stride errors in LayerNorm backward)
+    if config.model_name == "convnext_tiny" and use_mps and not config.force_mps:
+        print("[train] Warning: ConvNeXt has compatibility issues with MPS backend. Falling back to CPU.")
+        print("[train] For faster training, consider using CUDA or a different architecture.")
+        print("[train] To force MPS anyway, use --force-mps flag (may crash during training).")
+        device = torch.device("cpu")
+    else:
+        if config.model_name == "convnext_tiny" and use_mps and config.force_mps:
+            print("[train] Warning: Forcing MPS for ConvNeXt. This may cause view/stride errors during training.")
+        device = torch.device(
+            "mps" if use_mps
+            else ("cuda" if use_cuda else "cpu")
+        )
 
     model = build_model_fn(num_classes)
     model = model.to(device)
@@ -369,6 +413,7 @@ def add_common_cli(parser: argparse.ArgumentParser, defaults: TrainingConfig) ->
     parser.add_argument("--num-workers", type=int, default=defaults.num_workers)
     parser.add_argument("--seed", type=int, default=defaults.seed)
     parser.add_argument("--input-size", type=int, default=defaults.input_size)
+    parser.add_argument("--force-mps", action="store_true", help="Force MPS device even for ConvNeXt (may crash)")
     return parser
 
 

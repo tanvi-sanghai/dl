@@ -205,6 +205,26 @@ def build_densenet121(num_classes: int = 11, pretrained: bool = True) -> Tuple[n
     return model, recipe
 
 
+def build_convnext_tiny(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
+    """Build ConvNeXt-Tiny using timm (avoids torchvision's LayerNorm2d stride issues)."""
+    # Use timm which has better support for grayscale and avoids view/stride bugs
+    model = timm.create_model(
+        'convnext_tiny',
+        pretrained=pretrained,
+        in_chans=1,  # Direct grayscale support
+        num_classes=num_classes
+    )
+    
+    recipe = ModelRecipe(
+        name="convnext_tiny",
+        input_size=(224, 224),
+        default_lr=0.01,
+        default_weight_decay=1e-4,
+        default_batch_size=64,
+    )
+    return model, recipe
+
+
 def build_vit_s16(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
     """Vision Transformer Small/16 for 224×224, adapted for grayscale.
 
@@ -293,48 +313,13 @@ def build_swin_tiny(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.
     return model, recipe
 
 
-def build_convnext_tiny(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
-    """ConvNeXt-Tiny (224x224), adapted for grayscale input."""
-    from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
-
-    weights = ConvNeXt_Tiny_Weights.DEFAULT if pretrained else None
-    model = convnext_tiny(weights=weights)
-
-    # Adapt stem conv (features[0][0]) to 1 channel
-    stem = model.features[0][0]
-    if isinstance(stem, nn.Conv2d) and stem.in_channels == 3:
-        with torch.no_grad():
-            new_conv = nn.Conv2d(
-                in_channels=1,
-                out_channels=stem.out_channels,
-                kernel_size=stem.kernel_size,
-                stride=stem.stride,
-                padding=stem.padding,
-                bias=False,
-            )
-            new_conv.weight.copy_(stem.weight.mean(dim=1, keepdim=True))
-        model.features[0][0] = new_conv
-
-    # Replace classifier head
-    in_features = model.classifier[-1].in_features
-    model.classifier[-1] = _replace_classifier(model, in_features, num_classes, dropout_p=None)
-
-    recipe = ModelRecipe(
-        name="convnext_tiny",
-        input_size=(224, 224),
-        default_lr=0.01,
-        default_weight_decay=5e-4,
-        default_batch_size=64,
-    )
-    return model, recipe
-
 def build_all_models(num_classes: int = 11, pretrained: bool = True) -> Dict[str, Tuple[nn.Module, ModelRecipe]]:
     builders = [
-        build_convnext_tiny,
         build_resnet50,
         build_resnet101,
         build_efficientnet_b3,
         build_densenet121,
+        build_convnext_tiny,
         build_vit_s16,
         build_vit_b16,
         build_swin_tiny,

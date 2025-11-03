@@ -16,23 +16,6 @@ from .convnext_tiny import build_convnext_tiny
 
 def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingConfig]]:
     return {
-        "convnext_tiny": (
-            build_convnext_tiny,
-            TrainingConfig(
-                model_name="convnext_tiny",
-                input_channels=1,
-                input_size=224,
-                epochs=30,
-                batch_size=64,
-                lr=0.01,
-                momentum=0.9,
-                weight_decay=5e-4,
-                step_size=10,
-                gamma=0.1,
-                num_workers=4,
-                seed=42,
-            ),
-        ),
         "resnet50": (
             build_resnet50,
             TrainingConfig(
@@ -101,6 +84,23 @@ def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingCo
                 seed=42,
             ),
         ),
+        "convnext_tiny": (
+            build_convnext_tiny,
+            TrainingConfig(
+                model_name="convnext_tiny",
+                input_channels=1,
+                input_size=224,
+                epochs=30,
+                batch_size=64,
+                lr=0.01,
+                momentum=0.9,
+                weight_decay=1e-4,
+                step_size=10,
+                gamma=0.1,
+                num_workers=4,
+                seed=42,
+            ),
+        ),
     }
 
 
@@ -125,6 +125,12 @@ def _apply_cli_to_env(args: argparse.Namespace) -> None:
         os.environ["SEED"] = str(args.seed)
     if args.input_size is not None:
         os.environ["INPUT_SIZE"] = str(args.input_size)
+    # Optional flag to disable class weights
+    if hasattr(args, "no_class_weights") and args.no_class_weights:
+        os.environ["NO_CLASS_WEIGHTS"] = "1"
+    # Optional flag to force MPS for ConvNeXt
+    if hasattr(args, "force_mps") and args.force_mps:
+        os.environ["FORCE_MPS"] = "1"
 
 
 def main() -> None:
@@ -134,6 +140,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Unified trainer for OrganAMNIST models")
     parser.add_argument("--model", type=str, default=default_model, choices=list(registry.keys()))
     parser.add_argument("--all", action="store_true", help="Train all models sequentially")
+    parser.add_argument("--no-class-weights", action="store_true", help="Ignore class_weights.npy even if present")
 
     # Attach common hyperparameters using defaults of the selected model
     defaults = registry.get(default_model, list(registry.values())[0])[1]
