@@ -20,6 +20,8 @@ from .resnet101 import build_resnet101
 from .efficientnet_b3 import build_efficientnet_b3
 from .densenet121 import build_densenet121
 from .convnext_tiny import build_convnext_tiny
+from .resnext50_32x4d import build_resnext50_32x4d
+from .resnext101_32x8d import build_resnext101_32x8d
 
 
 class PredictDataset(Dataset):
@@ -64,6 +66,14 @@ def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingCo
         "resnet101": (
             build_resnet101,
             TrainingConfig(model_name="resnet101", input_channels=1, input_size=224),
+        ),
+        "resnext50_32x4d": (
+            build_resnext50_32x4d,
+            TrainingConfig(model_name="resnext50_32x4d", input_channels=1, input_size=224),
+        ),
+        "resnext101_32x8d": (
+            build_resnext101_32x8d,
+            TrainingConfig(model_name="resnext101_32x8d", input_channels=1, input_size=224),
         ),
         "efficientnet_b3": (
             build_efficientnet_b3,

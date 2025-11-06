@@ -72,8 +72,8 @@ class AdaptiveFusion(nn.Module):
         global_context = self.global_pool(concat_features)  # [B, C*num_layers, 1, 1]
         global_context = global_context.view(global_context.size(0), -1)  # [B, C*num_layers]
         
-        # Generate adaptive weights
-        weights = self.weight_net(global_context[:, :features[0].size(1)])  # [B, num_layers]
+        # Generate adaptive weights from full concatenated context
+        weights = self.weight_net(global_context)  # [B, num_layers]
         weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)  # [B, num_layers, 1, 1, 1]
         
         # Apply weighted combination
@@ -228,7 +228,9 @@ class AdaptiveDenseNet121(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
-                nn.init.constant_(m.bias, 0)
+                nn.init.kaiming_normal_(m.weight, nonlinearity="linear")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.features(x)

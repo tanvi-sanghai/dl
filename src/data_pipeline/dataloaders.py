@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import transforms as T
+import os
 
 from .organamnist_dataset import OrganAMNISTDataset
 
@@ -76,6 +77,14 @@ def build_dataloaders(
     manifest_csv_val: Optional[str] = None,
 ) -> Dict[str, DataLoader]:
     transforms = build_transforms(input_size=input_size, aug_strength=aug_strength)
+
+    # Auto-detect default CSV manifests if present (OrganAMNIST layout)
+    train_csv_default = os.path.join(data_root, "train", "labels_train.csv")
+    val_csv_default = os.path.join(data_root, "val", "labels_val.csv")
+    if manifest_csv_train is None and os.path.exists(train_csv_default):
+        manifest_csv_train = train_csv_default
+    if manifest_csv_val is None and os.path.exists(val_csv_default):
+        manifest_csv_val = val_csv_default
 
     train_ds = OrganAMNISTDataset(
         root_dir=data_root,

@@ -50,14 +50,29 @@ class OrganAMNISTDataset(Dataset):
     def _load_from_manifest(self, csv_path: str) -> None:
         with open(csv_path, "r", newline="") as f:
             reader = csv.DictReader(f)
-            if "path" not in reader.fieldnames or "label" not in reader.fieldnames:
-                raise ValueError("Manifest must contain 'path' and 'label' columns")
-            for row in reader:
-                raw_path = row["path"].strip()
-                label_str = row["label"].strip()
-                label = int(label_str)
-                full_path = raw_path if os.path.isabs(raw_path) else os.path.join(self.root_dir, raw_path)
-                self.samples.append(SampleRecord(path=full_path, label=label))
+            cols = set(reader.fieldnames or [])
+            if "path" in cols and "label" in cols:
+                # Generic manifest with absolute/relative paths
+                for row in reader:
+                    raw_path = row["path"].strip()
+                    label = int(row["label"].strip())
+                    full_path = raw_path if os.path.isabs(raw_path) else os.path.join(self.root_dir, raw_path)
+                    self.samples.append(SampleRecord(path=full_path, label=label))
+            elif "file" in cols and "label" in cols:
+                # OrganAMNIST style: file names relative to split image directory
+                if self.split == "train":
+                    base = os.path.join(self.root_dir, "train", "images_train")
+                elif self.split == "val":
+                    base = os.path.join(self.root_dir, "val", "images_val")
+                else:
+                    base = os.path.join(self.root_dir, "test", "images")
+                for row in reader:
+                    fname = row["file"].strip()
+                    label = int(row["label"].strip())
+                    full_path = os.path.join(base, fname)
+                    self.samples.append(SampleRecord(path=full_path, label=label))
+            else:
+                raise ValueError("Manifest must contain either ('path','label') or ('file','label') columns")
 
     def _load_from_folders(self, split_dir: str) -> None:
         class_names = sorted([d for d in os.listdir(split_dir) if os.path.isdir(os.path.join(split_dir, d))])

@@ -64,14 +64,16 @@ def run_single(cfg: ExperimentConfig) -> Dict:
 
 
 def main() -> None:
-    data_root = "dataset"  # expects train/ val/ test/ inside
-    out_root = "training_logs"
-    os.makedirs(out_root, exist_ok=True)
-
     default_architectures = ["resnet50", "resnet101", "efficientnet_b3", "densenet121", "vit_s16", "vit_b16", "swin_tiny"]
     parser = argparse.ArgumentParser(description="Run experiment sweep")
     parser.add_argument("--architectures", nargs="*", default=None, help="Subset of architectures to run (space-separated)")
+    parser.add_argument("--data-root", type=str, default="dataset", help="Dataset root containing train/val/test")
+    parser.add_argument("--out-root", type=str, default="training_logs", help="Output root for logs and checkpoints")
     args = parser.parse_args()
+
+    data_root = args.data_root
+    out_root = args.out_root
+    os.makedirs(out_root, exist_ok=True)
 
     architectures = args.architectures if args.architectures else default_architectures
     optimizers = ["sgd", "adamw"]
