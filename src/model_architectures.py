@@ -8,6 +8,7 @@ import torch.nn as nn
 from torchvision import models
 import timm
 
+from .models.densenet121_adaptive import build_densenet121_adaptive as _build_dn121_adaptive
 
 @dataclass(frozen=True)
 class ModelRecipe:
@@ -171,6 +172,38 @@ def build_resnet101(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.
     return model, recipe
 
 
+def build_resnext50_32x4d(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
+    weights = models.ResNeXt50_32X4D_Weights.DEFAULT if pretrained else None
+    model = models.resnext50_32x4d(weights=weights)
+    _replace_first_conv(model, attr_path="conv1")
+    in_features = model.fc.in_features
+    model.fc = _replace_classifier(model, in_features, num_classes, dropout_p=None)
+    recipe = ModelRecipe(
+        name="resnext50_32x4d",
+        input_size=(224, 224),
+        default_lr=0.05,
+        default_weight_decay=1e-4,
+        default_batch_size=64,
+    )
+    return model, recipe
+
+
+def build_resnext101_32x8d(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
+    weights = models.ResNeXt101_32X8D_Weights.DEFAULT if pretrained else None
+    model = models.resnext101_32x8d(weights=weights)
+    _replace_first_conv(model, attr_path="conv1")
+    in_features = model.fc.in_features
+    model.fc = _replace_classifier(model, in_features, num_classes, dropout_p=None)
+    recipe = ModelRecipe(
+        name="resnext101_32x8d",
+        input_size=(224, 224),
+        default_lr=0.05,
+        default_weight_decay=1e-4,
+        default_batch_size=48,
+    )
+    return model, recipe
+
+
 def build_efficientnet_b3(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
     weights = models.EfficientNet_B3_Weights.DEFAULT if pretrained else None
     model = models.efficientnet_b3(weights=weights)
@@ -204,6 +237,21 @@ def build_densenet121(num_classes: int = 11, pretrained: bool = True) -> Tuple[n
     )
     return model, recipe
 
+
+def build_densenet121_adaptive(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
+    """Adaptive DenseNet-121 with per-layer gating and SE attention.
+
+    Pretrained argument is ignored (weights are partially transferred inside builder).
+    """
+    model = _build_dn121_adaptive(num_classes=num_classes)
+    recipe = ModelRecipe(
+        name="densenet121_adaptive",
+        input_size=(224, 224),
+        default_lr=0.05,
+        default_weight_decay=1e-4,
+        default_batch_size=32,  # slightly smaller due to extra modules
+    )
+    return model, recipe
 
 def build_convnext_tiny(num_classes: int = 11, pretrained: bool = True) -> Tuple[nn.Module, ModelRecipe]:
     """Build ConvNeXt-Tiny using timm (avoids torchvision's LayerNorm2d stride issues)."""
@@ -317,8 +365,11 @@ def build_all_models(num_classes: int = 11, pretrained: bool = True) -> Dict[str
     builders = [
         build_resnet50,
         build_resnet101,
+        build_resnext50_32x4d,
+        build_resnext101_32x8d,
         build_efficientnet_b3,
         build_densenet121,
+        build_densenet121_adaptive,
         build_convnext_tiny,
         build_vit_s16,
         build_vit_b16,
