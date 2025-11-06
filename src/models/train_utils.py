@@ -3,9 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
+import certifi
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
+
+# Fix SSL certificate verification for macOS (needed for PyTorch model downloads)
+ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
 
 import matplotlib.pyplot as plt
 import numpy as np
