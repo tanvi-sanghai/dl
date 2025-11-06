@@ -25,7 +25,7 @@ from ..analysis.config import OUTPUT_CONFIG
 
 
 def run_adaptive_densenet_experiment(
-    data_root: str = "IS 2025 OrganAMNIST",
+    data_root: str = "dataset",
     output_dir: str = "training_logs/adaptive_densenet",
     epochs: int = 50,
     batch_size: int = 32,
@@ -165,7 +165,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train Adaptive DenseNet-121 with enhanced feature selection")
     
     # Data arguments
-    parser.add_argument("--data-root", type=str, default="IS 2025 OrganAMNIST",
+    parser.add_argument("--data-root", type=str, default="dataset",
                         help="Root directory containing train/val/test splits")
     parser.add_argument("--output-dir", type=str, default="training_logs/adaptive_densenet",
                         help="Directory to save model weights and logs")

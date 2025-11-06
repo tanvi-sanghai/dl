@@ -17,7 +17,7 @@ class DatasetConfig:
     root: Path = Path(
         os.getenv(
             "DATASET_ROOT",
-            str(Path(__file__).resolve().parents[2] / "IS 2025 OrganAMNIST"),
+            str(Path(__file__).resolve().parents[2] / "dataset"),
         )
     )
     train_images: Path = Path(os.getenv("TRAIN_IMAGES_DIR", str(root / "train" / "images_train")))

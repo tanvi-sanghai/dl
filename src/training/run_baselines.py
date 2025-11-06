@@ -9,7 +9,7 @@ from .run_experiments import ExperimentConfig, run_single
 
 def main() -> None:
     # 8 core models: 4 architectures × 2 optimizers, with label smoothing 0.1, strong aug, default LR per grid
-    data_root = "IS 2025 OrganAMNIST"
+    data_root = "dataset"
     out_root = "training_logs"
     os.makedirs(out_root, exist_ok=True)
 

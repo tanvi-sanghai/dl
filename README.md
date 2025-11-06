@@ -11,11 +11,11 @@ Getting started
    - Create/activate a virtualenv and install deps: `pip install -r requirements.txt`
 
 Data
-- Dataset is under `IS 2025 OrganAMNIST/` with train/val/test splits.
+- Dataset is under `dataset/` with train/val/test splits.
 - Test manifest: `test/manifest_public.csv` (columns: `index,file`).
 
 Repo layout
-- `IS 2025 OrganAMNIST/`: dataset splits and manifests
+- `dataset/`: dataset splits and manifests
 - `src/training/`: training/eval runners (`run_baselines.py`, `run_experiments.py`, `evaluate_best_on_test.py`)
 - `src/models/`: model definitions and utilities (`resnet50.py`, `resnet101.py`, `densenet121.py`, `train.py`, `predict.py`)
 - `src/analysis/`: analysis scripts to produce figures/tables/reports

@@ -54,9 +54,9 @@ coverage.xml
 .ipynb_checkpoints/
 
 # Data artifacts
-IS 2025 OrganAMNIST/train/
-IS 2025 OrganAMNIST/val/
-IS 2025 OrganAMNIST/test/
+dataset/train/
+dataset/val/
+dataset/test/
 
 # Environment files
 .env

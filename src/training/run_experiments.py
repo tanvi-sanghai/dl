@@ -64,7 +64,7 @@ def run_single(cfg: ExperimentConfig) -> Dict:
 
 
 def main() -> None:
-    data_root = "IS 2025 OrganAMNIST"  # expects train/ val/ test/ inside
+    data_root = "dataset"  # expects train/ val/ test/ inside
     out_root = "training_logs"
     os.makedirs(out_root, exist_ok=True)
 

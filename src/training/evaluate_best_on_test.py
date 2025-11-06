@@ -14,7 +14,7 @@ from .engine import resolve_device
 
 
 @torch.no_grad()
-def evaluate_dir(arch: str, run_tag: str, log_root: str = "training_logs", data_root: str = "IS 2025 OrganAMNIST") -> Dict:
+def evaluate_dir(arch: str, run_tag: str, log_root: str = "training_logs", data_root: str = "dataset") -> Dict:
     device = resolve_device()
     models = build_all_models(num_classes=11, pretrained=False)  # we'll load our weights
     model, recipe = models[arch]
