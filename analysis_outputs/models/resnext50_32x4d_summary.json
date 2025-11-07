@@ -1,0 +1,13 @@
+{
+  "model_name": "resnext50_32x4d",
+  "epochs": 30,
+  "batch_size": 64,
+  "learning_rate": 0.01,
+  "momentum": 0.9,
+  "weight_decay": 0.0001,
+  "train_samples": 34561,
+  "val_samples": 6491,
+  "final_val_accuracy": 0.9893698967801572,
+  "input_size": 224,
+  "input_channels": 1
+}
