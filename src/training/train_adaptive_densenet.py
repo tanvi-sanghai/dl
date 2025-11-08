@@ -26,7 +26,7 @@ from ..analysis.config import OUTPUT_CONFIG
 
 def run_adaptive_densenet_experiment(
     data_root: str = "dataset",
-    output_dir: str = "training_logs/adaptive_densenet",
+    output_dir: str = "training_logs/densenet121_adaptive",
     epochs: int = 50,
     batch_size: int = 32,
     lr: float = 0.01,
@@ -70,6 +70,8 @@ def run_adaptive_densenet_experiment(
     print("[Adaptive DenseNet] Building model with enhanced feature selection...")
     model = build_densenet121_adaptive(num_classes=11)
     
+    arch_name = "densenet121_adaptive"
+    
     # Setup device
     if device is None:
         device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -87,7 +89,9 @@ def run_adaptive_densenet_experiment(
     )
     
     # Training configuration
-    run_tag = f"adaptive_densenet_{optimizer}_lr{lr}_ls{label_smoothing}_{aug_strength}"
+    run_tag = f"{arch_name}_{optimizer}_ls{label_smoothing}_{aug_strength}_lr{lr}"
+    run_dir = os.path.join(output_dir, run_tag)
+    os.makedirs(run_dir, exist_ok=True)
     
     # Train model using the engine
     print(f"[Adaptive DenseNet] Starting training for {epochs} epochs...")
@@ -95,28 +99,28 @@ def run_adaptive_densenet_experiment(
         model=model,
         dataloaders=dataloaders,
         num_classes=11,
-        out_dir=output_dir,
+        out_dir=run_dir,
         epochs=epochs,
         optimizer_name=optimizer,
         lr=lr,
         weight_decay=1e-4,
         label_smoothing=label_smoothing,
         run_tag=run_tag,
-        scheduler="step",  # Use step scheduler by default
+        scheduler="step",        # use StepLR by default for this script
+        warmup_epochs=0,         # ignored for step schedule
+        min_lr=1e-6,             # ignored for step schedule
         step_size=10,
         gamma=0.1,
-        warmup_epochs=0,
-        min_lr=1e-6,
         mixup_alpha=0.0,
         cutmix_alpha=0.0,
         grad_clip_norm=None,
     )
     
     # Save additional metrics
-    metrics_path = Path(output_dir) / f"{run_tag}_metrics.json"
+    metrics_path = Path(run_dir) / f"{run_tag}_metrics.json"
     with open(metrics_path, 'w') as f:
         json.dump({
-            'model': 'densenet121_adaptive',
+            'model': arch_name,
             'epochs': epochs,
             'batch_size': batch_size,
             'learning_rate': lr,
@@ -127,7 +131,7 @@ def run_adaptive_densenet_experiment(
             'final_val_loss': results.get('best_val_loss', float('inf')),
         }, f, indent=2)
     
-    print(f"[Adaptive DenseNet] Training completed. Results saved to {output_dir}")
+    print(f"[Adaptive DenseNet] Training completed. Results saved to {run_dir}")
     print(f"[Adaptive DenseNet] Best validation accuracy: {results.get('best_val_acc', 0):.4f}")
     
     return results
@@ -167,8 +171,8 @@ def main():
     # Data arguments
     parser.add_argument("--data-root", type=str, default="dataset",
                         help="Root directory containing train/val/test splits")
-    parser.add_argument("--output-dir", type=str, default="training_logs/adaptive_densenet",
-                        help="Directory to save model weights and logs")
+    parser.add_argument("--output-dir", type=str, default="training_logs/densenet121_adaptive",
+                        help="Root directory to save model runs (subfolders per run_tag)")
     
     # Training arguments
     parser.add_argument("--epochs", type=int, default=50,

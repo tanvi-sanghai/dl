@@ -22,6 +22,7 @@ from .densenet121 import build_densenet121
 from .convnext_tiny import build_convnext_tiny
 from .resnext50_32x4d import build_resnext50_32x4d
 from .resnext101_32x8d import build_resnext101_32x8d
+from .densenet121_adaptive import build_densenet121_adaptive
 
 
 class PredictDataset(Dataset):
@@ -83,6 +84,10 @@ def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingCo
             build_densenet121,
             TrainingConfig(model_name="densenet121", input_channels=1, input_size=224),
         ),
+        "densenet121_adaptive": (
+            build_densenet121_adaptive,
+            TrainingConfig(model_name="densenet121_adaptive", input_channels=1, input_size=224),
+        ),
         "convnext_tiny": (
             build_convnext_tiny,
             TrainingConfig(model_name="convnext_tiny", input_channels=1, input_size=224),
@@ -103,13 +108,31 @@ def _infer_model(model_name: str, build_fn: Callable[[int], nn.Module], cfg: Tra
     num_classes = 11
     model = build_fn(num_classes).to(device)
     weights_path = OUTPUT_CONFIG.models_root / f"{model_name}_weights.pth"
-    if not weights_path.exists():
-        raise FileNotFoundError(f"Weights not found for {model_name}: {weights_path}")
-    try:
-        state = torch.load(weights_path, map_location=device, weights_only=True)
-    except TypeError:
-        state = torch.load(weights_path, map_location=device)
-    model.load_state_dict(state)
+    state_dict = None
+    if weights_path.exists():
+        try:
+            state_dict = torch.load(weights_path, map_location=device, weights_only=True)
+        except TypeError:
+            state_dict = torch.load(weights_path, map_location=device)
+    else:
+        # Fallback: locate latest best checkpoint under training_logs/<model_name>/**/best_*.pth
+        from pathlib import Path as _P
+        logs_root = _P(__file__).resolve().parents[2] / "training_logs" / model_name
+        try:
+            candidates = sorted(logs_root.rglob("best_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
+        except Exception:
+            candidates = []
+        if candidates:
+            ckpt_path = candidates[0]
+            state = torch.load(ckpt_path, map_location=device)
+            state_dict = state.get("model_state", None)
+        else:
+            raise FileNotFoundError(f"Weights not found for {model_name}: {weights_path} and no best_*.pth under {logs_root}")
+
+    if isinstance(state_dict, dict):
+        model.load_state_dict(state_dict)
+    else:
+        model.load_state_dict(state_dict)  # may raise if invalid; surfaces clearly
     model.eval()
 
     # Prepare test dataset
