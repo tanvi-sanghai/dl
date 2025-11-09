@@ -198,6 +198,8 @@ def train_model(
     scheduler: str | None = None,
     warmup_epochs: int = 0,
     min_lr: float = 1e-6,
+    step_size: int = 10,
+    gamma: float = 0.1,
     mixup_alpha: float = 0.0,
     cutmix_alpha: float = 0.0,
     grad_clip_norm: Optional[float] = None,
@@ -210,6 +212,8 @@ def train_model(
     lr_scheduler = None
     if scheduler == "cosine":
         lr_scheduler = _create_scheduler(optimizer, epochs=epochs, warmup_epochs=warmup_epochs, min_lr=min_lr)
+    elif scheduler == "step":
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
     history = {"train": [], "val": []}
     best = {}

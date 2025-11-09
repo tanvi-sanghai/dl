@@ -12,6 +12,8 @@ from .resnet101 import build_resnet101
 from .efficientnet_b3 import build_efficientnet_b3
 from .densenet121 import build_densenet121
 from .convnext_tiny import build_convnext_tiny
+from .resnext50_32x4d import build_resnext50_32x4d
+from .resnext101_32x8d import build_resnext101_32x8d
 
 
 def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingConfig]]:
@@ -92,6 +94,40 @@ def _models_registry() -> Dict[str, Tuple[Callable[[int], nn.Module], TrainingCo
                 input_size=224,
                 epochs=30,
                 batch_size=64,
+                lr=0.01,
+                momentum=0.9,
+                weight_decay=1e-4,
+                step_size=10,
+                gamma=0.1,
+                num_workers=4,
+                seed=42,
+            ),
+        ),
+        "resnext50_32x4d": (
+            build_resnext50_32x4d,
+            TrainingConfig(
+                model_name="resnext50_32x4d",
+                input_channels=1,
+                input_size=224,
+                epochs=30,
+                batch_size=64,
+                lr=0.01,
+                momentum=0.9,
+                weight_decay=1e-4,
+                step_size=10,
+                gamma=0.1,
+                num_workers=4,
+                seed=42,
+            ),
+        ),
+        "resnext101_32x8d": (
+            build_resnext101_32x8d,
+            TrainingConfig(
+                model_name="resnext101_32x8d",
+                input_channels=1,
+                input_size=224,
+                epochs=30,
+                batch_size=32,
                 lr=0.01,
                 momentum=0.9,
                 weight_decay=1e-4,
